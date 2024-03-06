@@ -3,6 +3,7 @@ import os
 import findspark
 from airflow import DAG
 from airflow.operators.bash import BashOperator
+from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 
 os.environ['HADOOP_CONF_DIR'] = '/etc/hadoop/conf'
 os.environ['YARN_CONF_DIR'] = '/etc/hadoop/conf'
@@ -37,15 +38,20 @@ load_geo_csv = BashOperator(
 )
 
 # Выполняем код скрипта для получения/записи семпла данных
-data_sample_load = BashOperator(
-    task_id="data_sample_load",
+data_sample_load = = SparkSubmitOperator(
+    task_id="preparation",
     dag=dag_preparation,
-    bash_command = """spark-submit --master yarn --deploy-mode cluster \
-                      --num-executors 2 --executor-memory 4g \
-                      /lessons/preparation.py \
-                      '/user/master/data/geo/events/' \
-                      '/user/antodnv/data/geo/events/'
-                    """
+    application="/lessons/preparation.py",
+    conn_id="yarn_spark",
+    application_args=[
+        "/user/master/data/geo/events/",
+        "/user/antodnv/data/geo/events/",
+    ],
+    conf={
+        "spark.driver.masResultSize": "20g"
+    },
+    executor_cores = 2,
+    executor_memory = "2g"
 )
 
 get_geo_csv >> load_geo_csv >> data_sample_load

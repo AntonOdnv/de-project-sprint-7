@@ -1,6 +1,7 @@
 import sys
 import os
 import findspark
+from pyspark.sql import SparkSession
 
 os.environ['HADOOP_CONF_DIR'] = '/etc/hadoop/conf'
 os.environ['YARN_CONF_DIR'] = '/etc/hadoop/conf'
@@ -23,8 +24,8 @@ def main():
                 .config("spark.ui.port", "4051") \
                 .getOrCreate()
 
-    # Забираем 20% данных
-    df_events = spark.read.parquet(f"{base_input_path}").sample(0.2)
+    # Забираем 5% данных
+    df_events = spark.read.parquet(f"{base_input_path}").sample(0.05)
 
     # Записываем данные. Мы каждй раз читаем случайные данные, поэтому просто перезаписываем текущий файл
     df_events.write\
