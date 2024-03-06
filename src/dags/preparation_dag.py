@@ -40,7 +40,12 @@ load_geo_csv = BashOperator(
 data_sample_load = BashOperator(
     task_id="data_sample_load",
     dag=dag_preparation,
-    bash_command = "spark-submit --master yarn --deploy-mode cluster --num-executors 2 --executor-memory 4g /lessons/initial_load.py '/user/master/data/geo/events/' '/user/antodnv/data/geo/events/'"
+    bash_command = """spark-submit --master yarn --deploy-mode cluster \
+                      --num-executors 2 --executor-memory 4g \
+                      /lessons/preparation.py \
+                      '/user/master/data/geo/events/' \
+                      '/user/antodnv/data/geo/events/'
+                    """
 )
 
 get_geo_csv >> load_geo_csv >> data_sample_load
