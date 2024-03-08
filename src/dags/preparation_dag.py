@@ -38,7 +38,7 @@ load_geo_csv = BashOperator(
 )
 
 # Выполняем код скрипта для получения/записи семпла данных
-data_sample_load = = SparkSubmitOperator(
+data_sample_load = SparkSubmitOperator(
     task_id="preparation",
     dag=dag_preparation,
     application="/lessons/preparation.py",
