@@ -63,39 +63,37 @@ def main():
     events = spark.read.option("basePath", "/user/antodnv/data/geo/events/").parquet(*paths)
 
     def events_with_cities(events, type_of_event):
+        # Регистрации считаем по первому сообщению, поэтому первую часть user собираем как message
         if type_of_event == "user":
             _event_type = "message"
         else: _event_type = type_of_event
             
-        spark_df = (events.filter(F.col("event_type")==_event_type).crossJoin(cities.hint("broadcast")) 
-                    .filter((F.col("lat").isNotNull())&(F.col("lon").isNotNull())) 
-                    .withColumn("dt", F.coalesce(F.col("event.datetime"), F.col("event.message_ts"))) 
+        spark_df = (events.filter(F.col("event_type")==_event_type).crossJoin(cities.hint("broadcast")) # докидываем города
+                    .filter((F.col("lat").isNotNull())&(F.col("lon").isNotNull())) # отбираем только данные с координатами (иначе не определить город)
+                    .withColumn("dt", F.coalesce(F.col("event.datetime"), F.col("event.message_ts"))) # функция общая, поэтому datetime или сообщения или события
                     .withColumn("week", F.weekofyear(F.col("dt"))) 
                     .withColumn("month", F.month(F.col("dt"))) 
-                    .withColumn("distance", udf_distance(F.col("lat"), F.col("lat_city"), F.col("lon"), F.col("lng_city"))) 
+                    .withColumn("distance", udf_distance(F.col("lat"), F.col("lat_city"), F.col("lon"), F.col("lng_city"))) # считаем расстояния
                     .withColumn("distance_rank",
                                 F.row_number().over(Window().partitionBy(["lat", "lon"]).orderBy("distance"))
-                                ).where("distance_rank == 1")
+                                ).where("distance_rank == 1") # выбираем релевантный город по наименьшему расстоянию
                     .selectExpr("event.message_from as user_id", "dt", "id as zone_id", "week", "month")
-                    .withColumn(f"week_{type_of_event}",  F.count("*").over(Window.partitionBy("zone_id", "week"))) 
-                    .withColumn(f"month_{type_of_event}", F.count("*").over(Window.partitionBy("zone_id", "month"))) 
-                    .distinct()
                     )
-        if type_of_event == "user":
+        if type_of_event == "user": # если хотим считать регистрации, сначала нужно определить юзера по самому первому сообщению
             spark_df = (spark_df
                         .withColumn("row", 
                                     F.row_number().over(Window.partitionBy("user_id").orderBy(F.col("dt").asc()))
                                 ).where("row == 1")
                         .selectExpr("zone_id", "week", "month")
-                        .withColumn(f"week_{type_of_event}",  F.count("*").over(Window.partitionBy("zone_id", "week"))) 
+                        .withColumn(f"week_{type_of_event}",  F.count("*").over(Window.partitionBy("zone_id", "week"))) # считаем количество событий по неделям
                         .withColumn(f"month_{type_of_event}", F.count("*").over(Window.partitionBy("zone_id", "month"))) 
                         .distinct()
                         )
-        else:
+        else: # если регистрации не важны - просто считаем агрегаты 
             spark_df = (spark_df
                         .selectExpr("zone_id", "week", "month")
-                        .withColumn(f"week_{type_of_event}",  F.count("*").over(Window.partitionBy("zone_id", "week"))) 
-                        .withColumn(f"month_{type_of_event}", F.count("*").over(Window.partitionBy("zone_id", "month"))) 
+                        .withColumn(f"week_{type_of_event}",  F.count("*").over(Window.partitionBy("zone_id", "week"))) # считаем количество событий по неделям
+                        .withColumn(f"month_{type_of_event}", F.count("*").over(Window.partitionBy("zone_id", "month"))) # считаем количество событий по месяцам
                         .distinct()
                         )
         return spark_df
