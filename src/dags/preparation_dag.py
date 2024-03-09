@@ -47,9 +47,7 @@ data_sample_load = SparkSubmitOperator(
         "/user/master/data/geo/events/",
         "/user/antodnv/data/geo/events/",
     ],
-    conf={
-        "spark.driver.masResultSize": "20g"
-    },
+    conf={"spark.driver.masResultSize": "20g"},
     executor_cores = 2,
     executor_memory = "2g"
 )
