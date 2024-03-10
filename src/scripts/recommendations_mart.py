@@ -64,20 +64,35 @@ def main():
 
     # Найдем уникальные пары пользователей, которые подписаны на один канал
     # Сначала соберем датасет со всеми подписками всех пользователей
-    # Их координаты тоже должны существовать, иначе не проверить условие в 1 км между пользователями
     user_subscriptions = (events.filter(F.col("event_type") == "subscription") 
         .filter(F.col("event.subscription_channel").isNotNull() & F.col("event.user").isNotNull()) 
-        .filter(F.col("lat").isNotNull() & F.col("lon").isNotNull()) 
-        .selectExpr("event.subscription_channel as channel_id", "event.user as user_id", "lat", "lon") 
+        
+        .selectExpr("event.subscription_channel as channel_id", "event.user as user_id") 
         .distinct() )
+    
+    # Нас будут интересовать только координаты самой актуальной активности пользователей для вычисления расстояний близости 1км
+    # Отберем актуальные координаты для каждого пользователя по аналогии с определеинем active_city в geo_mart
+    users_active_location = (events.filter(F.col("event_type") == "message") 
+        .withColumn("dt", F.coalesce(F.col("event.datetime"), F.col("event.message_ts"))) 
+        .withColumn("datetime_rank",
+                    F.row_number().over(Window().partitionBy(["event.message_from"]).orderBy(F.desc("dt"))) 
+        ).where("datetime_rank == 1") 
+        .selectExpr("event.message_from as user_id", "lat", "lon") )
+
+    # Добавим к user_subscriptions актуальные кооординаты пользователей
+    # Их координаты должны существовать, иначе не проверить условие в 1 км между пользователямию Поэтому "inner"
+    user_subscriptions_joined = (user_subscriptions
+        .join(users_active_location, on="user_id", how="inner") 
+        .selectExpr("user_id", "channel_id", "lat", "lon")
+        .filter(F.col("lat").isNotNull() & F.col("lon").isNotNull()) )
 
     # Затем выберем найдем все пары подьзователей, подписанных на 1 канал. 
     # Для каждого пользователя соберем все возможные сочетания пар других пользователей с той же подпиской.
     # У нас определенно есть дубли, а нужны уникальные пары. 
     # Среди двух id один точно меньше по номеру. Воспользуемся этим, чтобы отсечь лишних.
-    user_pairs_unique = (user_subscriptions 
+    user_pairs_unique = (user_subscriptions_joined 
         .selectExpr("user_id as user_left", "lat as lat_left", "lon as lon_left", "channel_id") 
-        .join(user_subscriptions.selectExpr("user_id as user_right", "lat as lat_right", "lon as lon_right", "channel_id"), 
+        .join(user_subscriptions_joined.selectExpr("user_id as user_right", "lat as lat_right", "lon as lon_right", "channel_id"), 
               on="channel_id", how="inner") 
         .drop("channel_id") 
         .filter("user_left < user_right") 
